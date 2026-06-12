@@ -16,22 +16,8 @@ KDE / GNOME / XFCE.
 ## Uso rápido
 
 ```bash
-git clone https://github.com/cargabsj175/neonatox-nhopkg.git
-```
-
-```bash
-sudo ./neonatox-bootstrap -L /mnt core
-```
-
-```bash
-sudo systemd-nspawn -D /mnt
-# dentro del contenedor:
-# passwd root
-# exit
-```
-
-```bash
-sudo ./neonatox-bootstrap -L /mnt -p mipassword kde
+sudo ./neonatox-bootstrap -L /mnt core               # sistema base
+sudo ./neonatox-bootstrap -L /mnt -p mipassword kde  # KDE (via chroot)
 ```
 
 ### Argumentos
@@ -79,6 +65,11 @@ bootstrap/
 - Linux con `chroot`, `mount --bind`, `git`, `meson`, `ninja`
 - `sudo` para `blkid` y `mount`
 - Conexión a internet para clonar nhopkg y descargar paquetes
+
+## Flujo completo
+
+Ver [`FLUJO.md`](FLUJO.md) para el detalle paso a paso de cada comando,
+helpers de chroot, diagrama de flujo y notas de ejecución.
 
 ## Recursos
 
