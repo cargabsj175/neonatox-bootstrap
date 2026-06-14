@@ -81,6 +81,32 @@ chroot_run() {
 }
 
 ##################################################
+#  Custom triggers — $LFS/var/nhopkg/triggers/*.sh
+##################################################
+run_triggers() {
+    local TDIR="${LFS}/var/nhopkg/triggers"
+    local LOG="${PWD}/neonatox-triggers.log"
+
+    [[ -d "$TDIR" ]] || return 0
+
+    echo "=== [triggers] Ejecutando disparadores ===" | tee -a "$LOG"
+
+    for t in "$TDIR"/*.sh; do
+        [[ -f "$t" ]] || continue
+        local name
+        name="$(basename "$t")"
+        echo "  -> ${name}" | tee -a "$LOG"
+        if chroot_run "bash /var/nhopkg/triggers/${name}" >> "$LOG" 2>&1; then
+            echo "  [ok] ${name}" | tee -a "$LOG"
+        else
+            echo "  [fallo] ${name} (codigo $?) — continuando" | tee -a "$LOG"
+        fi
+    done
+
+    echo "=== [triggers] Completo ===" | tee -a "$LOG"
+}
+
+##################################################
 #  Install base system — 01-base-neonatox.sh
 ##################################################
 install_core() {
@@ -214,6 +240,10 @@ EOF
     nhopkg -R --root "$LFS" -U
     nhopkg -R --root "$LFS" -S $(awk 'NF && !/^#/' "$PACKS_DIR/core") $(awk 'NF && !/^#/' "$PACKS_DIR/base-extra")
     nhopkg -R --root "$LFS" -S grub --no-check-deps
+
+    chroot_prepare
+    run_triggers
+    chroot_cleanup
 
     echo "=== [core] Listo ==="
 }
