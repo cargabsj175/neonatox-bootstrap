@@ -59,3 +59,4 @@ wget
 which
 btrfs-progs
 usb_modeswitch
+tzdata
