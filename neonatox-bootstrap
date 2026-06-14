@@ -1,11 +1,6 @@
 #!/bin/bash
 set -euo pipefail
 
-[[ "${EUID}" == "0" ]] || {
-    echo "Error: este script debe ejecutarse como root." >&2
-    exit 1
-}
-
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DATA_DIR="$SCRIPT_DIR/bootstrap/data"
 PACKS_DIR="$SCRIPT_DIR/bootstrap/packs"
@@ -58,6 +53,11 @@ while [[ $# -gt 0 ]]; do
 done
 
 [[ -z "$MODE" ]] && MODE="core"
+
+[[ "${EUID}" == "0" ]] || {
+    echo "Error: este script debe ejecutarse como root." >&2
+    exit 1
+}
 
 ##################################################
 #  Chroot helpers (mount/unmount VFS)
