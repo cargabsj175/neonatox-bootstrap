@@ -159,14 +159,14 @@ EOF
     echo "=== [core] Construyendo e instalando nhopkg ==="
     rm -rf /tmp/nhopkg
     git clone https://github.com/cargabsj175/neonatox-nhopkg.git /tmp/nhopkg
-    pushd /tmp/nhopkg -R >/dev/null
+    pushd /tmp/nhopkg >/dev/null
     meson setup build
     cd build
     DESTDIR="$PWD/DESTDIR" ninja install
     cp -rv "$PWD/DESTDIR/"* "$LFS/"
     cp -rv "$PWD/DESTDIR/"* /
     popd >/dev/null
-    mkdir -pv "${LFS}/var/nhopkg/{cache,files,logs,packages,repo}"
+    mkdir -pv ${LFS}/var/nhopkg/{cache,files,logs,packages,repo}
 
     echo "=== [core] Generando archivos dinámicos ==="
 
