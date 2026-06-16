@@ -157,8 +157,11 @@ EOF
     ln -sfv /proc/self/mounts "${LFS}/etc/mtab"
 
     echo "=== [core] Construyendo e instalando nhopkg ==="
-    rm -rf /tmp/nhopkg
-    git clone https://github.com/cargabsj175/neonatox-nhopkg.git /tmp/nhopkg
+    rm -rf /tmp/nhopkg /tmp/nhopkg.zip
+    wget -q --show-progress -O /tmp/nhopkg.zip https://github.com/cargabsj175/neonatox-nhopkg/archive/refs/heads/master.zip
+    unzip -q /tmp/nhopkg.zip -d /tmp
+    mv /tmp/neonatox-nhopkg-master /tmp/nhopkg
+    rm -f /tmp/nhopkg.zip
     pushd /tmp/nhopkg >/dev/null
     meson setup build
     cd build
