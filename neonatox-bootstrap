@@ -54,6 +54,23 @@ done
 
 [[ -z "$MODE" ]] && MODE="core"
 
+# Verificar que LFS no sea la raíz del host
+[[ "$LFS" != "/" ]] || {
+    echo "Error: LFS apunta a la raíz del sistema host ($LFS). Abortando." >&2
+    exit 1
+}
+
+# Verificar que LFS exista y sea un punto de montaje
+[[ -d "$LFS" ]] || {
+    echo "Error: $LFS no existe. Créelo y monte el sistema de archivos destino." >&2
+    exit 1
+}
+
+mountpoint -q "$LFS" || {
+    echo "Error: $LFS no es un punto de montaje. Monte el sistema de archivos destino en $LFS." >&2
+    exit 1
+}
+
 [[ "${EUID}" == "0" ]] || {
     echo "Error: este script debe ejecutarse como root." >&2
     exit 1
