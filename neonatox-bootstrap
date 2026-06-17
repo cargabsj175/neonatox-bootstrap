@@ -13,9 +13,10 @@ Uso: neonatox-bootstrap [opciones] <comando>
 
 Comandos:
   core            Instalar sistema base (directorios, nhopkg, config, paquetes core)
-  kde             Instalar escritorio KDE (ejecutar dentro de chroot en el destino)
-  gnome           Instalar escritorio GNOME (ejecutar dentro de chroot en el destino)
-  xfce            Instalar escritorio XFCE (ejecutar dentro de chroot en el destino)
+  kde             Instalar escritorio KDE sobre core existente
+  gnome           Instalar escritorio GNOME sobre core existente
+  xfce            Instalar escritorio XFCE sobre core existente
+  chroot          Entrar en chroot interactivo en $LFS
 
 Opciones:
   -L, --lfs <ruta>        Directorio raíz de destino (default: $LFS env o /mnt)
@@ -46,7 +47,7 @@ while [[ $# -gt 0 ]]; do
         --no-cleanup) SKIP_CLEANUP=1; shift ;;
         --pack-dir) PACKS_DIR="$2"; shift 2 ;;
         -h|--help) show_help ;;
-        core|kde|gnome|xfce) MODE="$1"; shift ;;
+        core|kde|gnome|xfce|chroot) MODE="$1"; shift ;;
         *) echo "Error: argumento desconocido: $1" >&2; show_help ;;
     esac
 done
@@ -59,23 +60,38 @@ done
     exit 1
 }
 
-# Verificar que LFS exista y sea un punto de montaje
-[[ -d "$LFS" ]] || {
-    echo "Error: $LFS no existe. Créelo y monte el sistema de archivos destino." >&2
-    exit 1
-}
-
-if command -v mountpoint >/dev/null 2>&1; then
-    mountpoint -q "$LFS" || {
-        echo "Error: $LFS no es un punto de montaje. Monte el sistema de archivos destino en $LFS." >&2
+# Verificar que LFS exista y sea un punto de montaje (solo en core)
+if [[ "$MODE" == "core" ]]; then
+    [[ -d "$LFS" ]] || {
+        echo "Error: $LFS no existe. Créelo y monte el sistema de archivos destino." >&2
         exit 1
     }
-else
-    awk -v d="$LFS" '$2==d{found=1} END{exit !found}' /proc/mounts || {
-        echo "Error: $LFS no es un punto de montaje. Monte el sistema de archivos destino en $LFS." >&2
-        exit 1
-    }
+    if command -v mountpoint >/dev/null 2>&1; then
+        mountpoint -q "$LFS" || {
+            echo "Error: $LFS no es un punto de montaje. Monte el sistema de archivos destino en $LFS." >&2
+            exit 1
+        }
+    else
+        awk -v d="$LFS" '$2==d{found=1} END{exit !found}' /proc/mounts || {
+            echo "Error: $LFS no es un punto de montaje. Monte el sistema de archivos destino en $LFS." >&2
+            exit 1
+        }
+    fi
 fi
+
+# Marcadores de estado
+CORE_SENTINEL="${LFS}/var/nhopkg/.core-installed"
+DE_SENTINEL="${LFS}/var/nhopkg/.desktop-common-installed"
+
+core_instalado() { [[ -f "$CORE_SENTINEL" ]]; }
+de_common_instalado() { [[ -f "$DE_SENTINEL" ]]; }
+
+# Limpieza al salir (error, Ctrl+C, fin normal)
+cleanup_all() {
+    chroot_cleanup
+    rm -rf /tmp/nhopkg /tmp/nhopkg.zip 2>/dev/null || true
+}
+trap cleanup_all EXIT INT TERM
 
 [[ "${EUID}" == "0" ]] || {
     echo "Error: este script debe ejecutarse como root." >&2
@@ -86,17 +102,25 @@ fi
 #  Chroot helpers (mount/unmount VFS)
 ##################################################
 chroot_prepare() {
-    mount -t proc proc "${LFS}/proc" 2>/dev/null || true
     mount --bind /dev "${LFS}/dev" 2>/dev/null || true
-    mount --bind /sys "${LFS}/sys" 2>/dev/null || true
-    mount --bind /run "${LFS}/run" 2>/dev/null || true
+    mount -t devpts devpts -o gid=5,mode=0620 "${LFS}/dev/pts" 2>/dev/null || true
+    mount -t proc proc "${LFS}/proc" 2>/dev/null || true
+    mount -t sysfs sysfs "${LFS}/sys" 2>/dev/null || true
+    mount -t tmpfs tmpfs "${LFS}/run" 2>/dev/null || true
+    if [ -h "${LFS}/dev/shm" ]; then
+        install -d -m 1777 "${LFS}$(realpath /dev/shm)" 2>/dev/null || true
+    else
+        mount -t tmpfs -o nosuid,nodev tmpfs "${LFS}/dev/shm" 2>/dev/null || true
+    fi
 }
 
 chroot_cleanup() {
-    umount -l "${LFS}/run"   2>/dev/null || true
-    umount -l "${LFS}/sys"   2>/dev/null || true
-    umount -l "${LFS}/dev"   2>/dev/null || true
-    umount -l "${LFS}/proc"  2>/dev/null || true
+    umount -l "${LFS}/dev/shm" 2>/dev/null || true
+    umount -l "${LFS}/dev/pts" 2>/dev/null || true
+    umount -l "${LFS}/run"     2>/dev/null || true
+    umount -l "${LFS}/sys"     2>/dev/null || true
+    umount -l "${LFS}/dev"     2>/dev/null || true
+    umount -l "${LFS}/proc"    2>/dev/null || true
 }
 
 chroot_run() {
@@ -133,6 +157,10 @@ run_triggers() {
 #  Install base system — 01-base-neonatox.sh
 ##################################################
 install_core() {
+    if core_instalado; then
+        echo "core ya instalado en $LFS. Saltando." >&2
+        return 0
+    fi
     echo "=== [core] Creando jerarquía de directorios ==="
 
     mkdir -pv ${LFS}/usr/{bin,lib,lib32}
@@ -289,6 +317,7 @@ EOF
     run_triggers
     chroot_cleanup
 
+    touch "$CORE_SENTINEL"
     echo "=== [core] Listo ==="
 }
 
@@ -296,6 +325,7 @@ EOF
 #  Desktop-common setup (shared by all DEs)
 ##################################################
 install_desktop_common() {
+    de_common_instalado && return 0
     chroot_prepare
     chroot_run "nhopkg -R -S $(awk 'NF && !/^#/' "$PACKS_DIR/desktop-common")"
     chroot_run "systemctl enable lightdm"
@@ -306,6 +336,7 @@ install_desktop_common() {
     else
         echo "  [saltado] passwd root — use --root-password o ejecútelo manualmente"
     fi
+    touch "$DE_SENTINEL"
 }
 
 ##################################################
@@ -321,7 +352,9 @@ cleanup() {
 #  KDE
 ##################################################
 install_kde() {
+    core_instalado || { echo "Error: ejecute 'core' primero." >&2; exit 1; }
     install_desktop_common
+    chroot_prepare
     chroot_run "nhopkg -R -S $(awk 'NF && !/^#/' "$PACKS_DIR/kde") $(awk 'NF && !/^#/' "$PACKS_DIR/kde-extra")"
     cleanup
     chroot_cleanup
@@ -332,7 +365,9 @@ install_kde() {
 ##################################################
 
 install_gnome() {
+    core_instalado || { echo "Error: ejecute 'core' primero." >&2; exit 1; }
     install_desktop_common
+    chroot_prepare
     chroot_run "nhopkg -R -S $(awk 'NF && !/^#/' "$PACKS_DIR/gnome") $(awk 'NF && !/^#/' "$PACKS_DIR/gnome-extra")"
     chroot_run "nhopkg -R -r qt5 qt6"
     cleanup
@@ -344,7 +379,9 @@ install_gnome() {
 ##################################################
 
 install_xfce() {
+    core_instalado || { echo "Error: ejecute 'core' primero." >&2; exit 1; }
     install_desktop_common
+    chroot_prepare
     chroot_run "nhopkg -R -S $(awk 'NF && !/^#/' "$PACKS_DIR/xfce") $(awk 'NF && !/^#/' "$PACKS_DIR/xfce-extra")"
     chroot_run "nhopkg -R -r qt6"
     cleanup
@@ -352,11 +389,24 @@ install_xfce() {
 }
 
 ##################################################
+#  Chroot interactivo
+##################################################
+
+do_chroot() {
+    core_instalado || { echo "Error: ejecute 'core' primero." >&2; exit 1; }
+    chroot_prepare
+    echo "Entrando en chroot $LFS (escriba 'exit' para salir)"
+    chroot "$LFS" /bin/bash
+    chroot_cleanup
+}
+
+##################################################
 #  Main
 ##################################################
 case "$MODE" in
-    core) install_core ;;
-    kde)  install_kde ;;
-    gnome) install_gnome ;;
-    xfce) install_xfce ;;
+    core)   install_core ;;
+    kde)    install_kde ;;
+    gnome)  install_gnome ;;
+    xfce)   install_xfce ;;
+    chroot) do_chroot ;;
 esac
