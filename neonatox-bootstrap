@@ -187,7 +187,7 @@ EOF
     cd build
     DESTDIR=$PWD/DESTDIR ninja install
     cp -a $PWD/DESTDIR/* "$LFS/"
-    # cp -rv "$PWD/DESTDIR/"* / # ya esta instalado por live-boot
+    cp -rv "$PWD/DESTDIR/"* / # necesario en host para ejecutar nhopkg --root
     popd >/dev/null
     mkdir -pv ${LFS}/var/nhopkg/{cache,files,logs,packages,repo}
 
