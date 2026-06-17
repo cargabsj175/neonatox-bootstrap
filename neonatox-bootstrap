@@ -181,16 +181,12 @@ EOF
     ln -sfv /proc/self/mounts "${LFS}/etc/mtab"
 
     echo "=== [core] Construyendo e instalando nhopkg ==="
-    rm -rf /tmp/nhopkg /tmp/nhopkg.zip
-    wget -O /tmp/nhopkg.zip https://github.com/cargabsj175/neonatox-nhopkg/archive/refs/heads/master.zip
-    unzip -q /tmp/nhopkg.zip -d /tmp
-    mv /tmp/neonatox-nhopkg-master /tmp/nhopkg
-    rm -f /tmp/nhopkg.zip
+    git clone https://github.com/cargabsj175/neonatox-nhopkg.git /tmp/nhopkg
     pushd /tmp/nhopkg >/dev/null
     meson setup build
     cd build
-    DESTDIR="$PWD/DESTDIR" ninja install
-    cp -rv "$PWD/DESTDIR/"* "$LFS/"
+    DESTDIR=$PWD/DESTDIR ninja install
+    cp -a $PWD/DESTDIR/* "$LFS/"
     # cp -rv "$PWD/DESTDIR/"* / # ya esta instalado por live-boot
     popd >/dev/null
     mkdir -pv ${LFS}/var/nhopkg/{cache,files,logs,packages,repo}
@@ -212,15 +208,14 @@ EOF
     fi
     echo "Dispositivo detectado: $DEV"
     if command -v blkid >/dev/null 2>&1; then
-        UUID="${UUID_OVERRIDE:-$(blkid -s UUID -o value "$DEV" 2>/dev/null || true)}"
-        FSTYPE="${FSTYPE_OVERRIDE:-$(blkid -s TYPE -o value "$DEV" 2>/dev/null || true)}"
+        BLKID_OUT="$(blkid "$DEV" 2>/dev/null || true)"
     elif command -v sudo >/dev/null 2>&1; then
-        UUID="${UUID_OVERRIDE:-$(sudo blkid -s UUID -o value "$DEV" 2>/dev/null || true)}"
-        FSTYPE="${FSTYPE_OVERRIDE:-$(sudo blkid -s TYPE -o value "$DEV" 2>/dev/null || true)}"
+        BLKID_OUT="$(sudo blkid "$DEV" 2>/dev/null || true)"
     else
-        UUID="${UUID_OVERRIDE:-}"
-        FSTYPE="${FSTYPE_OVERRIDE:-}"
+        BLKID_OUT=""
     fi
+    UUID="${UUID_OVERRIDE:-$(echo "$BLKID_OUT" | sed -n 's/.*UUID="\([^"]*\)".*/\1/p')}"
+    FSTYPE="${FSTYPE_OVERRIDE:-$(echo "$BLKID_OUT" | sed -n 's/.*TYPE="\([^"]*\)".*/\1/p')}"
     if [[ -z "$UUID" ]]; then
         echo "Error: No se pudo obtener UUID de $DEV" >&2
         exit 1
