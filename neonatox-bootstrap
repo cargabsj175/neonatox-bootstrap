@@ -66,10 +66,17 @@ done
     exit 1
 }
 
-mountpoint -q "$LFS" || {
-    echo "Error: $LFS no es un punto de montaje. Monte el sistema de archivos destino en $LFS." >&2
-    exit 1
-}
+if command -v mountpoint >/dev/null 2>&1; then
+    mountpoint -q "$LFS" || {
+        echo "Error: $LFS no es un punto de montaje. Monte el sistema de archivos destino en $LFS." >&2
+        exit 1
+    }
+else
+    awk -v d="$LFS" '$2==d{found=1} END{exit !found}' /proc/mounts || {
+        echo "Error: $LFS no es un punto de montaje. Monte el sistema de archivos destino en $LFS." >&2
+        exit 1
+    }
+fi
 
 [[ "${EUID}" == "0" ]] || {
     echo "Error: este script debe ejecutarse como root." >&2
@@ -191,8 +198,11 @@ EOF
     echo "=== [core] Generando archivos dinámicos ==="
 
     # fstab — detecta dispositivo/UUID/FSTYPE
-    DEV="$(findmnt -no SOURCE --target "$LFS" 2>/dev/null | sed 's/\[.*\]//' | tr -d '[:space:]')"
-    VOLUME="$(findmnt -no OPTIONS --target "$LFS" 2>/dev/null | grep -oP 'subvol=\K[^,]*' || true)"
+    DEV=""
+    if command -v findmnt >/dev/null 2>&1; then
+        DEV="$(findmnt -no SOURCE --target "$LFS" 2>/dev/null | sed 's/\[.*\]//' | tr -d '[:space:]')"
+        VOLUME="$(findmnt -no OPTIONS --target "$LFS" 2>/dev/null | sed -n 's/.*subvol=\([^,]*\).*/\1/p' || true)"
+    fi
     if [[ -z "$DEV" ]] || [[ ! -b "$DEV" ]]; then
         DEV="$(df -P "$LFS" | awk 'NR==2{print $1}' | sed 's/\[.*\]//')"
     fi
@@ -201,8 +211,16 @@ EOF
         exit 1
     fi
     echo "Dispositivo detectado: $DEV"
-    UUID="${UUID_OVERRIDE:-$(sudo blkid -s UUID -o value "$DEV" 2>/dev/null || true)}"
-    FSTYPE="${FSTYPE_OVERRIDE:-$(sudo blkid -s TYPE -o value "$DEV" 2>/dev/null || true)}"
+    if command -v blkid >/dev/null 2>&1; then
+        UUID="${UUID_OVERRIDE:-$(blkid -s UUID -o value "$DEV" 2>/dev/null || true)}"
+        FSTYPE="${FSTYPE_OVERRIDE:-$(blkid -s TYPE -o value "$DEV" 2>/dev/null || true)}"
+    elif command -v sudo >/dev/null 2>&1; then
+        UUID="${UUID_OVERRIDE:-$(sudo blkid -s UUID -o value "$DEV" 2>/dev/null || true)}"
+        FSTYPE="${FSTYPE_OVERRIDE:-$(sudo blkid -s TYPE -o value "$DEV" 2>/dev/null || true)}"
+    else
+        UUID="${UUID_OVERRIDE:-}"
+        FSTYPE="${FSTYPE_OVERRIDE:-}"
+    fi
     if [[ -z "$UUID" ]]; then
         echo "Error: No se pudo obtener UUID de $DEV" >&2
         exit 1
