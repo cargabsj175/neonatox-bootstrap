@@ -3,9 +3,14 @@
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DATA_DIR="$SCRIPT_DIR/bootstrap/data"
 PACKS_DIR="$SCRIPT_DIR/bootstrap/packs"
+NB_VERSION="v0.1"
 
 LFS="${LFS:-/mnt}"
 MODE=""
+
+show_ver() {
+	echo "${0} - ${NB_VERSION}"
+}
 
 show_help() {
     cat <<'EOF'
@@ -30,6 +35,7 @@ Opciones:
   --no-cleanup                Saltar limpieza post-instalación
   --pack-dir <ruta>           Directorio de archivos de paquetes
   -h, --help                  Mostrar esta ayuda
+  -v, --version               Muestra la version
 EOF
     exit 0
 }
@@ -47,6 +53,7 @@ while [[ $# -gt 0 ]]; do
         --no-cleanup) SKIP_CLEANUP=1; shift ;;
         --pack-dir) PACKS_DIR="$2"; shift 2 ;;
         -h|--help) show_help ;;
+        -v|--version) show_ver ;;
         core|kde|gnome|xfce|chroot) MODE="$1"; shift ;;
         *) echo "Error: argumento desconocido: $1" >&2; show_help ;;
     esac
@@ -260,8 +267,7 @@ EOF
 
 UUID=$UUID  /  $FSTYPE  $MOUNT_OPTS  $FS_PASS
 EOF
-    echo "fstab generado:"
-    cat "${LFS}/etc/fstab"
+    echo "    [INFO] fstab generado"
 
     # hosts / hostname — usa DMI + random
     if [[ -z "${NHOSTNAME:-}" ]]; then
@@ -276,8 +282,7 @@ EOF
 
 EOF
 
-	echo "hosts generado:"
-    cat "${LFS}/etc/hosts"
+	echo "    [INFO] hosts generado"
 
     cat > "${LFS}/etc/hostname" <<EOF
 # Begin /etc/hostname
@@ -286,8 +291,7 @@ ${NHOSTNAME}
 # End /etc/hostname
 EOF
 
-	echo "hostname generado:"
-    cat "${LFS}/etc/hostname"
+	echo "    [INFO] hostname generado"
 
     # timezone
     if [[ -z "${TZONE:-}" ]] && command -v readlink >/dev/null 2>&1; then
@@ -296,6 +300,8 @@ EOF
     TZONE="${TZONE:-America/Caracas}"
     ln -sfv "/usr/share/zoneinfo/${TZONE}" "${LFS}/etc/localtime"
     echo "${TZONE}" > "${LFS}/etc/timezone"
+    
+    echo "    [INFO] timezone generado"
 
     # machine-id
     if command -v openssl >/dev/null 2>&1; then
@@ -309,10 +315,11 @@ EOF
     fi
 
     echo "=== [core] Poblando BD de paquetes e instalando core ==="
-    nhopkg -R --root "$LFS" -U
-    nhopkg -R --root "$LFS" -S $(awk 'NF && !/^#/' "$PACKS_DIR/core") $(awk 'NF && !/^#/' "$PACKS_DIR/base-extra")
-    nhopkg -R --root "$LFS" -S grub --no-check-deps
-
+    nhopkg --root "$LFS" -U
+    nhopkg --root "$LFS" -RS $(awk 'NF && !/^#/' "$PACKS_DIR/core") $(awk 'NF && !/^#/' "$PACKS_DIR/base-extra")
+    nhopkg --root "$LFS" -RS grub --no-check-deps
+    nhopkg --root "$LFS" -RS libpwquality pam
+    
     chroot_prepare
     run_triggers
     chroot_cleanup
@@ -327,10 +334,9 @@ EOF
 install_desktop_common() {
     de_common_instalado && return 0
     chroot_prepare
-    chroot_run "nhopkg -R -S $(awk 'NF && !/^#/' "$PACKS_DIR/desktop-common")"
+    chroot_run "nhopkg -RS $(awk 'NF && !/^#/' "$PACKS_DIR/desktop-common")"
     chroot_run "systemctl enable lightdm"
     chroot_run "nhopkg -R --install-group ttf-fonts"
-    chroot_run "nhopkg -R -S libpwquality pam"
     if [[ -n "${ROOT_PASSWORD:-}" ]]; then
         echo "root:$ROOT_PASSWORD" | chroot "$LFS" chpasswd
     else
@@ -355,7 +361,7 @@ install_kde() {
     core_instalado || { echo "Error: ejecute 'core' primero." >&2; exit 1; }
     install_desktop_common
     chroot_prepare
-    chroot_run "nhopkg -R -S $(awk 'NF && !/^#/' "$PACKS_DIR/kde") $(awk 'NF && !/^#/' "$PACKS_DIR/kde-extra")"
+    chroot_run "nhopkg -RS $(awk 'NF && !/^#/' "$PACKS_DIR/kde") $(awk 'NF && !/^#/' "$PACKS_DIR/kde-extra")"
     cleanup
     chroot_cleanup
 }
@@ -368,8 +374,8 @@ install_gnome() {
     core_instalado || { echo "Error: ejecute 'core' primero." >&2; exit 1; }
     install_desktop_common
     chroot_prepare
-    chroot_run "nhopkg -R -S $(awk 'NF && !/^#/' "$PACKS_DIR/gnome") $(awk 'NF && !/^#/' "$PACKS_DIR/gnome-extra")"
-    chroot_run "nhopkg -R -r qt5 qt6"
+    chroot_run "nhopkg -RS $(awk 'NF && !/^#/' "$PACKS_DIR/gnome") $(awk 'NF && !/^#/' "$PACKS_DIR/gnome-extra")"
+    chroot_run "nhopkg -Rr qt5 qt6"
     cleanup
     chroot_cleanup
 }
@@ -382,7 +388,7 @@ install_xfce() {
     core_instalado || { echo "Error: ejecute 'core' primero." >&2; exit 1; }
     install_desktop_common
     chroot_prepare
-    chroot_run "nhopkg -R -S $(awk 'NF && !/^#/' "$PACKS_DIR/xfce") $(awk 'NF && !/^#/' "$PACKS_DIR/xfce-extra")"
+    chroot_run "nhopkg -RS $(awk 'NF && !/^#/' "$PACKS_DIR/xfce") $(awk 'NF && !/^#/' "$PACKS_DIR/xfce-extra")"
     chroot_run "nhopkg -R -r qt6"
     cleanup
     chroot_cleanup
