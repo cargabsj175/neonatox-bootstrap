@@ -175,7 +175,7 @@ EOF
 
     echo "=== [core] Construyendo e instalando nhopkg ==="
     rm -rf /tmp/nhopkg /tmp/nhopkg.zip
-    wget -q --show-progress -O /tmp/nhopkg.zip https://github.com/cargabsj175/neonatox-nhopkg/archive/refs/heads/master.zip
+    wget -O /tmp/nhopkg.zip https://github.com/cargabsj175/neonatox-nhopkg/archive/refs/heads/master.zip
     unzip -q /tmp/nhopkg.zip -d /tmp
     mv /tmp/neonatox-nhopkg-master /tmp/nhopkg
     rm -f /tmp/nhopkg.zip
