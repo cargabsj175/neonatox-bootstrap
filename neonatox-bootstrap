@@ -1,5 +1,7 @@
 #!/bin/bash
 set -euo pipefail
+trap 'echo "ERROR: linea $LINENO — $BASH_COMMAND" >&2' ERR
+trap 'rc=$?; [[ $rc -ne 0 ]] && echo "SALIDA: codigo $rc en linea $LINENO" >&2' EXIT
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DATA_DIR="$SCRIPT_DIR/bootstrap/data"
