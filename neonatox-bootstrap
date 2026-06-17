@@ -263,7 +263,9 @@ EOF
     cat "${LFS}/etc/hostname"
 
     # timezone
-    TZONE="${TZONE:-$(readlink /etc/localtime 2>/dev/null | grep -o 'zoneinfo/.*' | cut -d/ -f2-)}"
+    if [[ -z "${TZONE:-}" ]] && command -v readlink >/dev/null 2>&1; then
+        TZONE="$(readlink /etc/localtime 2>/dev/null | sed -n 's|.*/zoneinfo/||p')"
+    fi
     TZONE="${TZONE:-America/Caracas}"
     ln -sfv "/usr/share/zoneinfo/${TZONE}" "${LFS}/etc/localtime"
     echo "${TZONE}" > "${LFS}/etc/timezone"
@@ -271,8 +273,12 @@ EOF
     # machine-id
     if command -v openssl >/dev/null 2>&1; then
         openssl rand -hex 16 > "${LFS}/etc/machine-id"
+    elif [[ -r /proc/sys/kernel/random/boot_id ]]; then
+        tr -d '-' < /proc/sys/kernel/random/boot_id > "${LFS}/etc/machine-id"
+    elif [[ -r /proc/sys/kernel/random/uuid ]]; then
+        tr -d '-' < /proc/sys/kernel/random/uuid > "${LFS}/etc/machine-id"
     else
-        cat /proc/sys/kernel/random/boot_id | tr -d '-' > "${LFS}/etc/machine-id"
+        echo "deadbeefdeadbeefdeadbeefdeadbeef" > "${LFS}/etc/machine-id"
     fi
 
     echo "=== [core] Poblando BD de paquetes e instalando core ==="
