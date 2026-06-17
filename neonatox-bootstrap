@@ -249,12 +249,18 @@ EOF
 
 EOF
 
+	echo "hosts generado:"
+    cat "${LFS}/etc/hosts"
+
     cat > "${LFS}/etc/hostname" <<EOF
 # Begin /etc/hostname
 ${NHOSTNAME}
 
 # End /etc/hostname
 EOF
+
+	echo "hostname generado:"
+    cat "${LFS}/etc/hostname"
 
     # timezone
     TZONE="${TZONE:-$(readlink /etc/localtime 2>/dev/null | grep -o 'zoneinfo/.*' | cut -d/ -f2-)}"
