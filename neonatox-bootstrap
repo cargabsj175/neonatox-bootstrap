@@ -332,7 +332,7 @@ EOF
 #  Desktop-common setup (shared by all DEs)
 ##################################################
 install_desktop_common() {
-    # Verificar si estan instaladas la dependencias de la seccion
+    # Verificar si esta instalada la seccion
     de_common_instalado && return 0
     
     #Instalar paquetes de la seccion
@@ -364,8 +364,8 @@ cleanup() {
 #  KDE
 ##################################################
 install_kde() {
-    # Verificar si estan instaladas la dependencias de la seccion
-    core_instalado || { echo "Error: ejecute 'core' primero." >&2; exit 1; }
+    # Asegurar dependencias (core + desktop-common se saltan si ya instalados)
+    core_instalado || install_core
     install_desktop_common
     
     #Instalar paquetes de la seccion
@@ -384,8 +384,8 @@ install_kde() {
 
 install_gnome() {
 	
-    # Verificar si estan instaladas la dependencias de la seccion
-    core_instalado || { echo "Error: ejecute 'core' primero." >&2; exit 1; }
+    # Asegurar dependencias (core + desktop-common se saltan si ya instalados)
+    core_instalado || install_core
     install_desktop_common
     
     #Instalar paquetes de la seccion
@@ -405,8 +405,8 @@ install_gnome() {
 
 install_xfce() {
 	
-	# Verificar si estan instaladas la dependencias de la seccion
-    core_instalado || { echo "Error: ejecute 'core' primero." >&2; exit 1; }
+    # Asegurar dependencias (core + desktop-common se saltan si ya instalados)
+    core_instalado || install_core
     install_desktop_common
     
     #Instalar paquetes de la seccion
