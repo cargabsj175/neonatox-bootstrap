@@ -158,6 +158,8 @@ run_triggers() {
     done
 
     echo "=== [triggers] Completo ===" | tee -a "$LOG"
+    rm -f "$TDIR"/*.sh
+    rmdir "$TDIR" 2>/dev/null || true
 }
 
 ##################################################
@@ -319,11 +321,9 @@ EOF
     nhopkg --root "$LFS" -RS $(awk 'NF && !/^#/' "$PACKS_DIR/core") $(awk 'NF && !/^#/' "$PACKS_DIR/base-extra")
     nhopkg --root "$LFS" -RS grub --no-check-deps
     nhopkg --root "$LFS" -RS libpwquality pam
-    
     chroot_prepare
     run_triggers
     chroot_cleanup
-
     touch "$CORE_SENTINEL"
     echo "=== [core] Listo ==="
 }
@@ -332,11 +332,17 @@ EOF
 #  Desktop-common setup (shared by all DEs)
 ##################################################
 install_desktop_common() {
+    # Verificar si estan instaladas la dependencias de la seccion
     de_common_instalado && return 0
+    
+    #Instalar paquetes de la seccion
+    nhopkg --root "$LFS" -RS $(awk 'NF && !/^#/' "$PACKS_DIR/desktop-common")
+    
     chroot_prepare
-    chroot_run "nhopkg -RS $(awk 'NF && !/^#/' "$PACKS_DIR/desktop-common")"
     chroot_run "systemctl enable lightdm"
-    chroot_run "nhopkg -R --install-group ttf-fonts"
+    run_triggers
+    chroot_cleanup
+    
     if [[ -n "${ROOT_PASSWORD:-}" ]]; then
         echo "root:$ROOT_PASSWORD" | chroot "$LFS" chpasswd
     else
@@ -358,10 +364,16 @@ cleanup() {
 #  KDE
 ##################################################
 install_kde() {
+    # Verificar si estan instaladas la dependencias de la seccion
     core_instalado || { echo "Error: ejecute 'core' primero." >&2; exit 1; }
     install_desktop_common
+    
+    #Instalar paquetes de la seccion
+    nhopkg --root "$LFS" -RS $(awk 'NF && !/^#/' "$PACKS_DIR/kde") $(awk 'NF && !/^#/' "$PACKS_DIR/kde-extra")
+    
+    # Disparadores en contexto chroot + limpieza
     chroot_prepare
-    chroot_run "nhopkg -RS $(awk 'NF && !/^#/' "$PACKS_DIR/kde") $(awk 'NF && !/^#/' "$PACKS_DIR/kde-extra")"
+    run_triggers
     cleanup
     chroot_cleanup
 }
@@ -371,11 +383,18 @@ install_kde() {
 ##################################################
 
 install_gnome() {
+	
+    # Verificar si estan instaladas la dependencias de la seccion
     core_instalado || { echo "Error: ejecute 'core' primero." >&2; exit 1; }
     install_desktop_common
+    
+    #Instalar paquetes de la seccion
+    nhopkg --root "$LFS" -RS $(awk 'NF && !/^#/' "$PACKS_DIR/gnome") $(awk 'NF && !/^#/' "$PACKS_DIR/gnome-extra")
+    nhopkg --root "$LFS" -Rr qt5 qt6 > /dev/null 2>&1
+    
+    # Disparadores en contexto chroot + limpieza
     chroot_prepare
-    chroot_run "nhopkg -RS $(awk 'NF && !/^#/' "$PACKS_DIR/gnome") $(awk 'NF && !/^#/' "$PACKS_DIR/gnome-extra")"
-    chroot_run "nhopkg -Rr qt5 qt6"
+    run_triggers
     cleanup
     chroot_cleanup
 }
@@ -385,11 +404,18 @@ install_gnome() {
 ##################################################
 
 install_xfce() {
+	
+	# Verificar si estan instaladas la dependencias de la seccion
     core_instalado || { echo "Error: ejecute 'core' primero." >&2; exit 1; }
     install_desktop_common
+    
+    #Instalar paquetes de la seccion
+    nhopkg --root "$LFS" -RS $(awk 'NF && !/^#/' "$PACKS_DIR/xfce") $(awk 'NF && !/^#/' "$PACKS_DIR/xfce-extra")
+    nhopkg --root "$LFS" -Rr qt6 > /dev/null 2>&1
+    
+    # Disparadores en contexto chroot + limpieza
     chroot_prepare
-    chroot_run "nhopkg -RS $(awk 'NF && !/^#/' "$PACKS_DIR/xfce") $(awk 'NF && !/^#/' "$PACKS_DIR/xfce-extra")"
-    chroot_run "nhopkg -R -r qt6"
+    run_triggers
     cleanup
     chroot_cleanup
 }
