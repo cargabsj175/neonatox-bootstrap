@@ -4,6 +4,7 @@
 ![systemd](https://img.shields.io/badge/systemd-052A46?logo=systemd&logoColor=fff)
 ![btrfs](https://img.shields.io/badge/btrfs-2D8659?logo=btrfs&logoColor=fff)
 ![Linux](https://img.shields.io/badge/linux-FCC624?logo=linux&logoColor=000)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/cargabsj175/neonatox-bootstrap)
 
 Bootstrap scripts para [NeonatoX](https://neonatox.vegnux.com), una
 distribución Linux desde cero. Crea la jerarquía del sistema de archivos,
