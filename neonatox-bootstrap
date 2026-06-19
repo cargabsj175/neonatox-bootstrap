@@ -143,7 +143,7 @@ run_triggers() {
 
     [[ -d "$TDIR" ]] || return 0
 
-    echo "=== [triggers] Ejecutando disparadores ===" | tee -a "$LOG"
+    echo "=== [triggers] Ejecutando disparadores para ${section} ===" | tee -a "$LOG"
 
     for t in "$TDIR"/*.sh; do
         [[ -f "$t" ]] || continue
@@ -157,7 +157,7 @@ run_triggers() {
         fi
     done
 
-    echo "=== [triggers] Completo ===" | tee -a "$LOG"
+    echo "=== [triggers] - [${section}] Completo ===" | tee -a "$LOG"
     rm -f "$TDIR"/*.sh
     rmdir "$TDIR" 2>/dev/null || true
 }
@@ -166,6 +166,7 @@ run_triggers() {
 #  Install base system — 01-base-neonatox.sh
 ##################################################
 install_core() {
+	section="Core"
     if core_instalado; then
         echo "core ya instalado en $LFS. Saltando." >&2
         return 0
@@ -320,7 +321,8 @@ EOF
     nhopkg --root "$LFS" -U
     nhopkg --root "$LFS" -RS $(awk 'NF && !/^#/' "$PACKS_DIR/core") $(awk 'NF && !/^#/' "$PACKS_DIR/base-extra")
     nhopkg --root "$LFS" -RS grub --no-check-deps
-    nhopkg --root "$LFS" -RS libpwquality pam
+    nhopkg --root "$LFS" -RS libpwquality 
+    nhopkg --root "$LFS" -Rr pam && nhopkg --root "$LFS" -RS pam
     chroot_prepare
     run_triggers
     chroot_cleanup
@@ -332,6 +334,7 @@ EOF
 #  Desktop-common setup (shared by all DEs)
 ##################################################
 install_desktop_common() {
+	section="Desktop Common"
     # Verificar si esta instalada la seccion
     de_common_instalado && return 0
     
@@ -364,6 +367,7 @@ cleanup() {
 #  KDE
 ##################################################
 install_kde() {
+	section="KDE"
     # Asegurar dependencias (core + desktop-common se saltan si ya instalados)
     core_instalado || install_core
     install_desktop_common
@@ -383,7 +387,7 @@ install_kde() {
 ##################################################
 
 install_gnome() {
-	
+	section="Gnome"
     # Asegurar dependencias (core + desktop-common se saltan si ya instalados)
     core_instalado || install_core
     install_desktop_common
@@ -404,7 +408,7 @@ install_gnome() {
 ##################################################
 
 install_xfce() {
-	
+	section="Xfce"
     # Asegurar dependencias (core + desktop-common se saltan si ya instalados)
     core_instalado || install_core
     install_desktop_common

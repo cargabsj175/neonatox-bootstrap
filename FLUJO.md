@@ -9,9 +9,10 @@ neonatox-bootstrap [--lfs <ruta>] [opciones] <comando>
 | Comando | Contexto | Descripción |
 |---------|----------|-------------|
 | `core` | host (`nhopkg --root`) | Sistema base: directorios, nhopkg, config dinámica, paquetes core |
-| `kde` | chroot (`chroot $LFS`) | Escritorio KDE + common |
-| `gnome` | chroot (`chroot $LFS`) | Escritorio GNOME + common |
-| `xfce` | chroot (`chroot $LFS`) | Escritorio XFCE + common |
+| `kde` | host → chroot (`chroot_run`) | Escritorio KDE + desktop-common |
+| `gnome` | host → chroot (`chroot_run`) | Escritorio GNOME + desktop-common |
+| `xfce` | host → chroot (`chroot_run`) | Escritorio XFCE + desktop-common |
+| `chroot` | host → chroot | Shell interactivo dentro de `$LFS` |
 
 | Opción | Default | Descripción |
 |--------|---------|-------------|
@@ -43,7 +44,6 @@ bootstrap/
       profile               # profile global
       os-release            # ID del sistema
       lsb-release           # ID LSB
-      locale.conf           # locale es_US.UTF-8
       polkit-1/rules.d/
         00-mount-internal.rules
       profile.d/
@@ -65,6 +65,11 @@ bootstrap/
     gnome-extra             # 11 paquetes apps GNOME
     xfce                    # 21 paquetes XFCE4
     xfce-extra              # 15 paquetes apps XFCE
+01-base-neonatox.sh         # referencia original (intacto)
+02-corespacks               # referencia original (intacto)
+FLUJO.md                    # este archivo
+AGENTS.md                   # guía para asistentes IA
+testing_neoanatox_btrfs     # notas de workflow btrfs + systemd-nspawn
 ```
 
 ## Helpers de chroot
@@ -81,69 +86,94 @@ sin depender de systemd-nspawn:
 ## Flujo: core (host)
 
 1. **Jerarquía de directorios** — `mkdir -pv` y symlinks (`/bin → usr/bin`, etc.)
-2. **Archivos estáticos** — `cp -a bootstrap/data/etc/. → $LFS/etc/`
-3. **Symlinks del sistema** — `ld-linux`, `awk`, `sh`, `mtab`
-4. **Construir nhopkg** — `git clone` → `meson setup build` → `ninja install`
+2. **Archivos estáticos** — `cp -a bootstrap/data/etc/. → $LFS/etc/`, `skel/ → $LFS/root/`
+3. **Symlinks del sistema** — `awk → gawk`, `sh → bash`, `mtab`
+4. **Construir nhopkg** — `git clone` → `meson setup build` → `ninja install` → `cp -a DESTDIR/* $LFS/`
 5. **Archivos dinámicos** — `fstab` (blkid), `hosts`/`hostname` (DMI+random), timezone (host), `machine-id`
-6. **Paquetes core** — `nhopkg --root $LFS -U && -S core base-extra grub`
+6. **Paquetes core** — `nhopkg --root $LFS -U` (poblar BD), `-RS core base-extra`, `-RS grub --no-check-deps`, `-RS libpwquality pam`
+7. **Triggers** — `chroot_prepare → run_triggers → chroot_cleanup`
+8. **Sentinel** — se crea `$LFS/var/nhopkg/.core-installed`
 
-Todo se ejecuta directamente sobre `$LFS` usando `nhopkg --root`.
+Todo se ejecuta directamente sobre `$LFS` usando `nhopkg --root`. Los triggers
+se ejecutan dentro de chroot para que los postinstall scripts corran en el
+entorno destino.
 
 ## Flujo: DE (kde / gnome / xfce)
 
-Los tres comandos DE ejecutan dentro de chroot en `$LFS`:
+Los tres comandos DE se ejecutan desde el **host** y usan `chroot_run`
+para operar dentro de `$LFS`. Cada comando asegura que `core` y
+`desktop-common` estén instalados antes de proceder.
 
-1. **chroot_prepare** — monta VFS
-2. **Desktop common** — `nhopkg -S desktop-common`, `systemctl enable lightdm`, `nhopkg --install-group ttf-fonts`, `nhopkg -S libpwquality pam`, `passwd root`
-3. **Paquetes del DE** — según el comando:
-   - KDE: `nhopkg -S kde + kde-extra`
-   - GNOME: `nhopkg -S gnome + gnome-extra; nhopkg -r qt5 qt6`
-   - XFCE: `nhopkg -S xfce + xfce-extra; nhopkg -r qt6`
-4. **Cleanup** — `rm -rf /usr/src/* /var/nhopkg/cache/* /tmp/*`
-5. **chroot_cleanup** — desmonta VFS
+### Desktop common (shared)
+
+1. `nhopkg --root $LFS -RS desktop-common`
+2. **chroot_prepare** → `chroot_run "systemctl enable lightdm"` → **run_triggers** → **chroot_cleanup**
+3. `echo "root:$ROOT_PASSWORD" | chroot "$LFS" chpasswd` (si se proveyó `--root-password`)
+4. Se crea `$LFS/var/nhopkg/.desktop-common-installed`
+
+### Paquetes del DE
+
+Se ejecutan desde el host (`nhopkg --root $LFS`):
+
+| DE | Paquetes | Remociones |
+|----|----------|------------|
+| KDE | `-RS kde kde-extra` | — |
+| GNOME | `-RS gnome gnome-extra` | `-Rr qt5 qt6` |
+| XFCE | `-RS xfce xfce-extra` | `-Rr qt6` |
+
+Luego, dentro de chroot: **chroot_prepare → run_triggers → cleanup → chroot_cleanup**.
 
 ## Diagrama
 
 ```
-┌──────────────────────────────────────┐
-│         neonatox-bootstrap           │
-│  Argumentos → LFS, hostname, pass... │
-└──────────┬───────────────────────────┘
+┌─────────────────────────────────────────┐
+│           neonatox-bootstrap            │
+│    Argumentos → LFS, hostname, pass...  │
+└──────────┬──────────────────────────────┘
            │
-    ┌──────┴──────────────┐
-    ▼                     ▼
-┌─────────┐     ┌──────────────────┐
-│  core   │     │  kde/gnome/xfce  │
-│ (host)  │     │    (chroot)      │
-│         │     │                  │
-│ 1. mkdir│     │ 1. chroot_prepare│
-│ 2. cp   │     │ 2. desktop-common│
-│ 3. symln│     │ 3. enable lightdm│
-│ 4. nhop │     │ 4. ttf-fonts     │
-│ 5. dyn  │     │ 5. pam+passwd    │
-│ 6. pkgs │     │ 6. nhopkg -S DE  │
-└─────────┘     │ 7. cleanup       │
-                │ 8. chroot_cleanup│
-                └──────────────────┘
+     ┌──────┴──────────────────┐
+     ▼                         ▼
+┌──────────┐     ┌──────────────────────────┐
+│   core   │     │    kde / gnome / xfce    │
+│  (host)  │     │   (host → chroot_run)    │
+│          │     │                          │
+│ 1. mkdir │     │ 1. desktop-common (host) │
+│ 2. cp    │     │ 2. chroot_prepare        │
+│ 3. symln │     │ 3. systemctl enable ldm  │
+│ 4. nhopkg│     │ 4. run_triggers          │
+│ 5. dyn   │     │ 5. chroot_cleanup        │
+│ 6. pkgs  │     │ 6. chpasswd root         │
+│ 7. trigs │     │ 7. nhopkg -RS DE (host)  │
+│ 8. sentl │     │ 8. chroot_prepare        │
+└──────────┘     │ 9. run_triggers          │
+                 │10. cleanup (chroot)      │
+                 │11. chroot_cleanup        │
+                 └──────────────────────────┘
 ```
 
 ## Dependencias entre comandos
 
 - `core` debe ejecutarse **primero** (desde el host).
-- `kde` / `gnome` / `xfce` se ejecutan **después** desde el host,
-  asumen que `core` ya pobló `$LFS` con la jerarquía, nhopkg y la BD.
+- `kde` / `gnome` / `xfce` asumen que `core` ya pobló `$LFS`; cada
+  uno verifica el sentinel y si falta, ejecuta `core` y `desktop-common`
+  automáticamente.
+- `chroot` requiere `core` instalado (verifica el sentinel).
 
 ## Notas
 
-- `nhopkg --root "$LFS"` se usa solo en `core` para paquetes sin
-  postinstall triggers relevantes.
-- `chroot_run "nhopkg -S"` se usa en DE commands para que los
-  disparadores postinstall corran en el destino.
+- `nhopkg --root "$LFS"` se usa para operaciones que no requieren
+  postinstall triggers (instalación de paquetes desde el host).
+- `chroot_prepare` / `chroot_run` / `chroot_cleanup` se usan para
+  ejecutar triggers postinstall y comandos systemd dentro del destino.
 - `systemctl` requiere que el target tenga systemd instalado.
-- `passwd root` usa `chpasswd` si se provee `--root-password`;
-  si se omite, se salta con un aviso.
+- `passwd root` usa `chpasswd` dentro de chroot si se provee
+  `--root-password`; si se omite, se salta con un aviso.
+- Existen archivos **sentinel** (`/var/nhopkg/.core-installed`,
+  `/var/nhopkg/.desktop-common-installed`) para evitar reinstalaciones.
 - El cleanup final elimina `/usr/src/*`, `/var/nhopkg/cache/*`,
   `/tmp/*` dentro del chroot.
+- Comando `chroot` — entra en un shell interactivo dentro de `$LFS`
+  (requiere `core` instalado).
 
 ## Problemas conocidos
 
