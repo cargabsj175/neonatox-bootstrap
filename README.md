@@ -4,6 +4,7 @@
 ![systemd](https://img.shields.io/badge/systemd-052A46?logo=systemd&logoColor=fff)
 ![btrfs](https://img.shields.io/badge/btrfs-2D8659?logo=btrfs&logoColor=fff)
 ![Linux](https://img.shields.io/badge/linux-FCC624?logo=linux&logoColor=000)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/cargabsj175/neonatox-bootstrap)
 
 Bootstrap scripts para [NeonatoX](https://neonatox.vegnux.com), una
 distribución Linux desde cero. Crea la jerarquía del sistema de archivos,
@@ -60,11 +61,7 @@ bootstrap/
     kde / kde-extra         # KF6+Plasma y apps KDE
     gnome / gnome-extra     # GNOME core y apps
     xfce / xfce-extra       # XFCE4 y apps
-01-base-neonatox.sh         # referencia original (intacto)
-02-corespacks               # referencia original (intacto)
 FLUJO.md                    # diagrama de flujo y detalle paso a paso
-AGENTS.md                   # guía para asistentes IA
-testing_neoanatox_btrfs     # notas de workflow btrfs + systemd-nspawn
 ```
 
 ## Requisitos

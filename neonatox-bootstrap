@@ -217,15 +217,15 @@ EOF
     ln -sfv bash "${LFS}/usr/bin/sh"
     ln -sfv /proc/self/mounts "${LFS}/etc/mtab"
 
-    echo "=== [core] Construyendo e instalando nhopkg ==="
-    git clone https://github.com/cargabsj175/neonatox-nhopkg.git /tmp/nhopkg
-    pushd /tmp/nhopkg >/dev/null
-    meson setup build
-    cd build
-    DESTDIR=$PWD/DESTDIR ninja install
-    cp -a $PWD/DESTDIR/* "$LFS/"
+    echo "=== [core] Creando directorio para metadata de nhopkg ==="
+    # git clone https://github.com/cargabsj175/neonatox-nhopkg.git /tmp/nhopkg
+    # pushd /tmp/nhopkg >/dev/null
+    # meson setup build
+    # cd build
+    # DESTDIR=$PWD/DESTDIR ninja install
+    # cp -a $PWD/DESTDIR/* "$LFS/"
     # cp -rv "$PWD/DESTDIR/"* / # ya nhopkg esta en el initramfs
-    popd >/dev/null
+    # popd >/dev/null
     mkdir -pv ${LFS}/var/nhopkg/{cache,files,logs,packages,repo}
 
     echo "=== [core] Generando archivos dinámicos ==="
@@ -323,6 +323,7 @@ EOF
     nhopkg --root "$LFS" -RS grub --no-check-deps
     nhopkg --root "$LFS" -RS libpwquality 
     nhopkg --root "$LFS" -Rr pam && nhopkg --root "$LFS" -RS pam
+    nhopkg --root "$LFS" -RS nhopkg 
     chroot_prepare
     run_triggers
     chroot_cleanup
