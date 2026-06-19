@@ -213,20 +213,12 @@ EOF
     fi
 
     echo "=== [core] Enlaces simbólicos del sistema ==="
-    ln -sfv gawk "${LFS}/usr/bin/awk"
-    ln -sfv bash "${LFS}/usr/bin/sh"
-    ln -sfv /proc/self/mounts "${LFS}/etc/mtab"
+    ln -sf gawk "${LFS}/usr/bin/awk"
+    ln -sf bash "${LFS}/usr/bin/sh"
+    ln -sf /proc/self/mounts "${LFS}/etc/mtab"
 
-    echo "=== [core] Creando directorio para metadata de nhopkg ==="
-    # git clone https://github.com/cargabsj175/neonatox-nhopkg.git /tmp/nhopkg
-    # pushd /tmp/nhopkg >/dev/null
-    # meson setup build
-    # cd build
-    # DESTDIR=$PWD/DESTDIR ninja install
-    # cp -a $PWD/DESTDIR/* "$LFS/"
-    # cp -rv "$PWD/DESTDIR/"* / # ya nhopkg esta en el initramfs
-    # popd >/dev/null
-    mkdir -pv ${LFS}/var/nhopkg/{cache,files,logs,packages,repo}
+    echo "=== [core] Creando directorios para metadata de nhopkg ==="
+    mkdir -p ${LFS}/var/nhopkg/{cache,files,logs,packages,repo}
 
     echo "=== [core] Generando archivos dinámicos ==="
 
@@ -301,7 +293,7 @@ EOF
         TZONE="$(readlink /etc/localtime 2>/dev/null | sed -n 's|.*/zoneinfo/||p')"
     fi
     TZONE="${TZONE:-America/Caracas}"
-    ln -sfv "/usr/share/zoneinfo/${TZONE}" "${LFS}/etc/localtime"
+    ln -sf "/usr/share/zoneinfo/${TZONE}" "${LFS}/etc/localtime"
     echo "${TZONE}" > "${LFS}/etc/timezone"
     
     echo "    [INFO] timezone generado"
@@ -316,13 +308,17 @@ EOF
     else
         echo "deadbeefdeadbeefdeadbeefdeadbeef" > "${LFS}/etc/machine-id"
     fi
+    
+    echo "    [INFO] machine-id generado"
+    
 
     echo "=== [core] Poblando BD de paquetes e instalando core ==="
     nhopkg --root "$LFS" -U
     nhopkg --root "$LFS" -RS $(awk 'NF && !/^#/' "$PACKS_DIR/core") $(awk 'NF && !/^#/' "$PACKS_DIR/base-extra")
     nhopkg --root "$LFS" -RS grub --no-check-deps
     nhopkg --root "$LFS" -RS libpwquality 
-    nhopkg --root "$LFS" -Rr pam && nhopkg --root "$LFS" -RS pam
+    nhopkg --root "$LFS" -Rr pam 
+    nhopkg --root "$LFS" -RS pam
     nhopkg --root "$LFS" -RS nhopkg 
     chroot_prepare
     run_triggers
@@ -368,10 +364,11 @@ cleanup() {
 #  KDE
 ##################################################
 install_kde() {
-	section="KDE"
     # Asegurar dependencias (core + desktop-common se saltan si ya instalados)
     core_instalado || install_core
     install_desktop_common
+    
+    section="KDE"
     
     #Instalar paquetes de la seccion
     nhopkg --root "$LFS" -RS $(awk 'NF && !/^#/' "$PACKS_DIR/kde") $(awk 'NF && !/^#/' "$PACKS_DIR/kde-extra")
@@ -388,10 +385,11 @@ install_kde() {
 ##################################################
 
 install_gnome() {
-	section="Gnome"
-    # Asegurar dependencias (core + desktop-common se saltan si ya instalados)
+	# Asegurar dependencias (core + desktop-common se saltan si ya instalados)
     core_instalado || install_core
     install_desktop_common
+    
+    section="Gnome"
     
     #Instalar paquetes de la seccion
     nhopkg --root "$LFS" -RS $(awk 'NF && !/^#/' "$PACKS_DIR/gnome") $(awk 'NF && !/^#/' "$PACKS_DIR/gnome-extra")
@@ -409,10 +407,11 @@ install_gnome() {
 ##################################################
 
 install_xfce() {
-	section="Xfce"
     # Asegurar dependencias (core + desktop-common se saltan si ya instalados)
     core_instalado || install_core
     install_desktop_common
+    
+    section="Xfce"
     
     #Instalar paquetes de la seccion
     nhopkg --root "$LFS" -RS $(awk 'NF && !/^#/' "$PACKS_DIR/xfce") $(awk 'NF && !/^#/' "$PACKS_DIR/xfce-extra")
