@@ -14,28 +14,32 @@ show_ver() {
 
 show_help() {
     cat <<'EOF'
-Uso: neonatox-bootstrap [opciones] <comando>
+Uso: neonatox-bootstrap [opciones] <comando> [opciones-del-comando]
 
 Comandos:
   core            Instalar sistema base (directorios, nhopkg, config, paquetes core)
   kde             Instalar escritorio KDE sobre core existente
   gnome           Instalar escritorio GNOME sobre core existente
   xfce            Instalar escritorio XFCE sobre core existente
+  user            Crear usuario del sistema (user --help para opciones)
+  grub            Instalar GRUB en dispositivo detectado (grub --help para opciones)
   chroot          Entrar en chroot interactivo en $LFS
 
-Opciones:
-  -L, --lfs <ruta>        Directorio raíz de destino (default: $LFS env o /mnt)
-  --hostname <nombre>     Sobrescribir nombre de host autogenerado
-  --device <disp>         Dispositivo para fstab (detección automática)
-  --uuid <uuid>           UUID para fstab (detección automática)
-  --fstype <tipo>         Tipo de sistema de archivos (detección automática)
-  -z, --timezone <zona>       Zona horaria (default: detectada del host)
-  -l, --locale <locale>       Locale (default: es_US.UTF-8)
-  -p, --root-password <pass>  Contraseña root (si se omite, se salta passwd)
-  --no-cleanup                Saltar limpieza post-instalación
-  --pack-dir <ruta>           Directorio de archivos de paquetes
-  -h, --help                  Mostrar esta ayuda
-  -v, --version               Muestra la version
+Opciones globales:
+  -L, --lfs <ruta>      Directorio raíz de destino (default: $LFS env o /mnt)
+  --hostname <nombre>   Sobrescribir nombre de host autogenerado
+  --device <disp>       Dispositivo para fstab (detección automática)
+  --uuid <uuid>         UUID para fstab (detección automática)
+  --fstype <tipo>       Tipo de sistema de archivos (detección automática)
+  -z, --timezone <zona>     Zona horaria (default: detectada del host)
+  -l, --locale <locale>     Locale (default: es_US.UTF-8)
+  --no-cleanup              Saltar limpieza post-instalación
+  --pack-dir <ruta>         Directorio de archivos de paquetes
+  -h, --help                Mostrar esta ayuda
+  -v, --version             Muestra la version
+
+Use 'neonatox-bootstrap user --help' o 'neonatox-bootstrap grub --help'
+para opciones específicas de cada subcomando.
 EOF
     exit 0
 }
@@ -49,12 +53,11 @@ while [[ $# -gt 0 ]]; do
         --fstype) FSTYPE_OVERRIDE="$2"; shift 2 ;;
         -z|--timezone) TZONE="$2"; shift 2 ;;
         -l|--locale) LOCALE="$2"; shift 2 ;;
-        -p|--root-password) ROOT_PASSWORD="$2"; shift 2 ;;
         --no-cleanup) SKIP_CLEANUP=1; shift ;;
         --pack-dir) PACKS_DIR="$2"; shift 2 ;;
         -h|--help) show_help ;;
         -v|--version) show_ver ;;
-        core|kde|gnome|xfce|chroot) MODE="$1"; shift ;;
+        core|kde|gnome|xfce|chroot|user|grub) MODE="$1"; shift; break ;;
         *) echo "Error: argumento desconocido: $1" >&2; show_help ;;
     esac
 done
@@ -317,7 +320,8 @@ EOF
     nhopkg --root "$LFS" -RS $(awk 'NF && !/^#/' "$PACKS_DIR/core") $(awk 'NF && !/^#/' "$PACKS_DIR/base-extra")
     nhopkg --root "$LFS" -RS grub --no-check-deps
     nhopkg --root "$LFS" -RS libpwquality 
-    nhopkg --root "$LFS" -Rr pam 
+    # harcoded uninstall for pam (meanwhile)
+    rm -f "$LFS"/var/nhopkg/*/pam-*
     nhopkg --root "$LFS" -RS pam
     nhopkg --root "$LFS" -RS nhopkg 
     chroot_prepare
@@ -343,11 +347,6 @@ install_desktop_common() {
     run_triggers
     chroot_cleanup
     
-    if [[ -n "${ROOT_PASSWORD:-}" ]]; then
-        echo "root:$ROOT_PASSWORD" | chroot "$LFS" chpasswd
-    else
-        echo "  [saltado] passwd root — use --root-password o ejecútelo manualmente"
-    fi
     touch "$DE_SENTINEL"
 }
 
@@ -437,6 +436,162 @@ do_chroot() {
 }
 
 ##################################################
+#  User creation
+##################################################
+cmd_user() {
+    local USERNAME="" FULLNAME="" GROUPS="users" SHELL="/bin/bash" PASSWORD=""
+    local NO_CREATE_HOME="" UID_SPEC="" GID_SPEC=""
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -u|--username) USERNAME="$2"; shift 2 ;;
+            -f|--fullname) FULLNAME="$2"; shift 2 ;;
+            -g|--groups) GROUPS="$2"; shift 2 ;;
+            -s|--shell) SHELL="$2"; shift 2 ;;
+            -p|--password) PASSWORD="$2"; shift 2 ;;
+            --no-create-home) NO_CREATE_HOME=1; shift ;;
+            --uid) UID_SPEC="$2"; shift 2 ;;
+            --gid) GID_SPEC="$2"; shift 2 ;;
+            -h|--help)
+                cat <<'EOF'
+Uso: neonatox-bootstrap [opciones] user [opciones]
+
+Opciones:
+  -u, --username <name>  Nombre de usuario (requerido)
+  -f, --fullname <texto> Nombre completo (GECOS)
+  -g, --groups <lista>   Grupos adicionales separados por coma (default: users)
+  -s, --shell <ruta>     Shell de login (default: /bin/bash)
+  -p, --password <pass>  Contraseña (vía chpasswd)
+  --no-create-home       No crear /home/<username>
+  --uid <num>            UID específico
+  --gid <num>            GID del grupo primario
+  -h, --help             Mostrar esta ayuda
+EOF
+                exit 0 ;;
+            *) echo "Error: opción desconocida: $1" >&2; exit 1 ;;
+        esac
+    done
+
+    [[ -n "$USERNAME" ]] || { echo "Error: --username es requerido" >&2; exit 1; }
+
+    core_instalado || { echo "Error: ejecute 'core' primero." >&2; exit 1; }
+
+    chroot_prepare
+
+    if [[ "$USERNAME" == "root" ]]; then
+        if [[ -n "$PASSWORD" ]]; then
+            echo "root:$PASSWORD" | chroot "$LFS" chpasswd
+            echo "  [ok] contraseña de root actualizada"
+        else
+            echo "  [saltado] no se proveyó contraseña para root"
+        fi
+    else
+        # Validar grupos
+        local GROUP_LIST=() VALID_GROUPS=() g
+        IFS=',' read -ra GROUP_LIST <<< "$GROUPS"
+        for g in "${GROUP_LIST[@]}"; do
+            if grep -q "^${g}:" "$LFS/etc/group" 2>/dev/null; then
+                VALID_GROUPS+=("$g")
+            else
+                echo "  [aviso] grupo '$g' no existe — ignorado"
+            fi
+        done
+
+        # Construir comando useradd
+        local UA="useradd"
+        [[ -z "$NO_CREATE_HOME" ]] && UA+=" -m" || UA+=" -M"
+        [[ -n "$UID_SPEC" ]] && UA+=" -u $UID_SPEC"
+        [[ -n "$GID_SPEC" ]] && UA+=" -g $GID_SPEC"
+        [[ -n "$FULLNAME" ]] && UA+=" -c \"$FULLNAME\""
+        [[ -n "$SHELL" ]] && UA+=" -s $SHELL"
+        if [[ ${#VALID_GROUPS[@]} -gt 0 ]]; then
+            local GSTR
+            GSTR=$(IFS=,; echo "${VALID_GROUPS[*]}")
+            UA+=" -G $GSTR"
+        fi
+        UA+=" $USERNAME"
+
+        chroot_run "$UA" || echo "  [aviso] useradd falló (puede que el usuario ya exista)"
+
+        if [[ -n "$PASSWORD" ]]; then
+            echo "$USERNAME:$PASSWORD" | chroot "$LFS" chpasswd
+            echo "  [ok] contraseña establecida para $USERNAME"
+        fi
+    fi
+
+    run_triggers
+    chroot_cleanup
+}
+
+##################################################
+#  GRUB installation
+##################################################
+cmd_grub() {
+    local DEVICE="" EFI="" EFI_DIR="/boot" REINSTALL=""
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -d|--device) DEVICE="$2"; shift 2 ;;
+            --efi) EFI=1; shift ;;
+            --efi-dir) EFI_DIR="$2"; shift 2 ;;
+            --reinstall) REINSTALL="--reinstall"; shift ;;
+            -h|--help)
+                cat <<'EOF'
+Uso: neonatox-bootstrap [opciones] grub [opciones]
+
+Opciones:
+  -d, --device <disp>  Dispositivo donde instalar GRUB (default: auto desde fstab)
+  --efi                Modo UEFI (x86_64-efi), legacy por defecto
+  --efi-dir <dir>      Directorio de la partición EFI (default: /boot)
+  --reinstall          Pasar --reinstall a grub-install
+  -h, --help           Mostrar esta ayuda
+EOF
+                exit 0 ;;
+            *) echo "Error: opción desconocida: $1" >&2; exit 1 ;;
+        esac
+    done
+
+    core_instalado || { echo "Error: ejecute 'core' primero." >&2; exit 1; }
+
+    # Detectar dispositivo desde fstab si no se proveyó
+    if [[ -z "$DEVICE" ]]; then
+        local FSTAB_DEV PART
+        FSTAB_DEV=$(awk '$2=="/"{print $1}' "$LFS/etc/fstab" 2>/dev/null)
+        [[ -n "$FSTAB_DEV" ]] || { echo "Error: no se pudo detectar dispositivo desde /etc/fstab" >&2; exit 1; }
+
+        if [[ "$FSTAB_DEV" =~ ^UUID= ]]; then
+            local UUID="${FSTAB_DEV#UUID=}"
+            local BY_UUID="/dev/disk/by-uuid/$UUID"
+            if [[ -e "$BY_UUID" ]]; then
+                PART=$(readlink -f "$BY_UUID")
+            else
+                echo "Error: no se pudo resolver UUID=$UUID" >&2; exit 1
+            fi
+        else
+            PART="$FSTAB_DEV"
+        fi
+        # /dev/sda3 -> /dev/sda , /dev/nvme0n1p2 -> /dev/nvme0n1
+        DEVICE=$(echo "$PART" | sed 's/[0-9]*$//; s/p$//')
+    fi
+
+    [[ -b "$DEVICE" ]] || { echo "Error: $DEVICE no es un dispositivo de bloque" >&2; exit 1; }
+    echo "  [ok] dispositivo: $DEVICE"
+
+    chroot_prepare
+
+    if [[ -n "$EFI" ]]; then
+        chroot_run "grub-install --target=x86_64-efi --efi-directory=$EFI_DIR --bootloader-id=NeonatoX $REINSTALL"
+    else
+        chroot_run "grub-install $REINSTALL $DEVICE"
+    fi
+
+    chroot_run "grub-mkconfig -o /boot/grub/grub.cfg"
+
+    run_triggers
+    chroot_cleanup
+}
+
+##################################################
 #  Main
 ##################################################
 case "$MODE" in
@@ -444,5 +599,7 @@ case "$MODE" in
     kde)    install_kde ;;
     gnome)  install_gnome ;;
     xfce)   install_xfce ;;
+    user)   cmd_user "$@" ;;
+    grub)   cmd_grub "$@" ;;
     chroot) do_chroot ;;
 esac

@@ -12,6 +12,8 @@ neonatox-bootstrap [--lfs <ruta>] [opciones] <comando>
 | `kde` | host → chroot (`chroot_run`) | Escritorio KDE + desktop-common |
 | `gnome` | host → chroot (`chroot_run`) | Escritorio GNOME + desktop-common |
 | `xfce` | host → chroot (`chroot_run`) | Escritorio XFCE + desktop-common |
+| `user` | host → chroot | Crear usuario (`useradd`, `groupadd`, `chpasswd`) |
+| `grub` | host → chroot | Instalar GRUB (`grub-install` + `grub-mkconfig`) |
 | `chroot` | host → chroot | Shell interactivo dentro de `$LFS` |
 
 | Opción | Default | Descripción |
@@ -23,7 +25,6 @@ neonatox-bootstrap [--lfs <ruta>] [opciones] <comando>
 | `--fstype <tipo>` | auto-detect | Tipo FS para fstab |
 | `-z, --timezone <zona>` | host o `America/Caracas` | Zona horaria |
 | `-l, --locale <locale>` | `es_US.UTF-8` | Locale del sistema |
-| `-p, --root-password <pass>` | — | Contraseña root (vía chpasswd) |
 | `--no-cleanup` | — | Salta `rm -rf /usr/src/* /tmp/*` |
 | `--pack-dir <dir>` | `bootstrap/packs/` | Listas de paquetes |
 | `-h, --help` | — | Muestra la ayuda |
@@ -51,6 +52,8 @@ bootstrap/
         readline.sh
         umask.sh
         i18n.sh
+      default/
+        grub                    # vars para grub-mkconfig
       skel/
         .bash_profile
         .bashrc
@@ -108,8 +111,13 @@ para operar dentro de `$LFS`. Cada comando asegura que `core` y
 
 1. `nhopkg --root $LFS -RS desktop-common`
 2. **chroot_prepare** → `chroot_run "systemctl enable lightdm"` → **run_triggers** → **chroot_cleanup**
-3. `echo "root:$ROOT_PASSWORD" | chroot "$LFS" chpasswd` (si se proveyó `--root-password`)
-4. Se crea `$LFS/var/nhopkg/.desktop-common-installed`
+3. Se crea `$LFS/var/nhopkg/.desktop-common-installed`
+
+La contraseña de root ya no se gestiona aquí. Ahora se usa:
+
+```
+neonatox-bootstrap user --username root -p <contraseña>
+```
 
 ### Paquetes del DE
 
@@ -128,27 +136,28 @@ Luego, dentro de chroot: **chroot_prepare → run_triggers → cleanup → chroo
 ```
 ┌─────────────────────────────────────────┐
 │           neonatox-bootstrap            │
-│    Argumentos → LFS, hostname, pass...  │
-└──────────┬──────────────────────────────┘
-           │
-     ┌──────┴──────────────────┐
-     ▼                         ▼
-┌──────────┐     ┌──────────────────────────┐
-│   core   │     │    kde / gnome / xfce    │
-│  (host)  │     │   (host → chroot_run)    │
-│          │     │                          │
-│ 1. mkdir │     │ 1. desktop-common (host) │
-│ 2. cp    │     │ 2. chroot_prepare        │
-│ 3. symln │     │ 3. systemctl enable ldm  │
-│ 4. nhopkg│     │ 4. run_triggers          │
-│ 5. dyn   │     │ 5. chroot_cleanup        │
-│ 6. pkgs  │     │ 6. chpasswd root         │
-│ 7. trigs │     │ 7. nhopkg -RS DE (host)  │
-│ 8. sentl │     │ 8. chroot_prepare        │
-└──────────┘     │ 9. run_triggers          │
-                 │10. cleanup (chroot)      │
-                 │11. chroot_cleanup        │
-                 └──────────────────────────┘
+│    Argumentos → LFS, hostname, ...      │
+└──────────┬──────────────────────────────┐
+           │                              │
+     ┌─────┴──────────┐       ┌───────────┴──────────┐
+     ▼                ▼       ▼                      ▼
+┌──────────┐ ┌────────────┐ ┌──────────┐   ┌────────────────┐
+│   core   │ │  user/grub │ │  DEs     │   │    chroot      │
+│  (host)  │ │ host→chroot│ │ host→ch  │   │   interactivo  │
+│          │ │            │ │   root   │   │                │
+│ 1. mkdir │ │ Verificar  │ │ 1. deskt │   │ chroot_prepare │
+│ 2. cp    │ │ sentinel   │ │ 2. common│   │ shell          │
+│ 3. symln │ │ chroot_prep│ │ 3. prep  │   │ chroot_cleanup │
+│ 4. nhopkg│ │ useradd /  │ │ 4. light │   └────────────────┘
+│ 5. dyn   │ │ grub-inst  │ │ 5. dm en │
+│ 6. pkgs  │ │ chpasswd / │ │ 6. trigs │
+│ 7. trigs │ │ grub-mkcfg │ │ 7. clean │
+│ 8. sentl │ │ triggers   │ │ 8. nhopk │
+└──────────┘ │ cleanup     │ │ 9. -RS DE│
+             └─────────────┘ │10. trigs │
+                             │11. clean │
+                             │12. clean │
+                             └──────────┘
 ```
 
 ## Dependencias entre comandos
@@ -157,6 +166,7 @@ Luego, dentro de chroot: **chroot_prepare → run_triggers → cleanup → chroo
 - `kde` / `gnome` / `xfce` asumen que `core` ya pobló `$LFS`; cada
   uno verifica el sentinel y si falta, ejecuta `core` y `desktop-common`
   automáticamente.
+- `user` y `grub` requieren `core` instalado (verifican el sentinel).
 - `chroot` requiere `core` instalado (verifica el sentinel).
 
 ## Notas
@@ -166,8 +176,9 @@ Luego, dentro de chroot: **chroot_prepare → run_triggers → cleanup → chroo
 - `chroot_prepare` / `chroot_run` / `chroot_cleanup` se usan para
   ejecutar triggers postinstall y comandos systemd dentro del destino.
 - `systemctl` requiere que el target tenga systemd instalado.
-- `passwd root` usa `chpasswd` dentro de chroot si se provee
-  `--root-password`; si se omite, se salta con un aviso.
+- `user --username root -p <pass>` reemplaza el antiguo `--root-password`.
+- `grub` detecta el dispositivo automáticamente desde `/etc/fstab`;
+  legacy por defecto, usar `--efi` para UEFI.
 - Existen archivos **sentinel** (`/var/nhopkg/.core-installed`,
   `/var/nhopkg/.desktop-common-installed`) para evitar reinstalaciones.
 - El cleanup final elimina `/usr/src/*`, `/var/nhopkg/cache/*`,
