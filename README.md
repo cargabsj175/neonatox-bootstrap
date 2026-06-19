@@ -60,11 +60,7 @@ bootstrap/
     kde / kde-extra         # KF6+Plasma y apps KDE
     gnome / gnome-extra     # GNOME core y apps
     xfce / xfce-extra       # XFCE4 y apps
-01-base-neonatox.sh         # referencia original (intacto)
-02-corespacks               # referencia original (intacto)
 FLUJO.md                    # diagrama de flujo y detalle paso a paso
-AGENTS.md                   # guía para asistentes IA
-testing_neoanatox_btrfs     # notas de workflow btrfs + systemd-nspawn
 ```
 
 ## Requisitos
